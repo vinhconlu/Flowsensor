@@ -1,0 +1,756 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Smart Monitor Pro</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap');
+        
+        :root {
+            --primary: #0ea5e9;
+            --success: #10b981;
+            --danger: #ef4444;
+            --bg: #f8fafc;
+        }
+
+        body {
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            background-color: var(--bg);
+            color: #1e293b;
+            transition: background-color 0.3s ease;
+            overflow-x: hidden;
+        }
+
+        .glass {
+            background: rgba(255, 255, 255, 0.85);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.5);
+            border-radius: 1.5rem;
+            box-shadow: 0 10px 30px -10px rgba(0,0,0,0.04);
+        }
+
+        .nav-btn {
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .nav-btn.active {
+            background-color: #0ea5e9;
+            color: white !important;
+            box-shadow: 0 10px 15px -3px rgba(14, 165, 233, 0.3);
+        }
+
+        .stat-card {
+            transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .stat-card:hover {
+            transform: translateY(-8px);
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.05);
+        }
+
+        .pump-active {
+            background: linear-gradient(135deg, #10b981 0%, #059669 100%) !important;
+            color: white !important;
+        }
+
+        .animate-float {
+            animation: float 4s ease-in-out infinite;
+        }
+
+        @keyframes float {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-15px); }
+        }
+
+        .chart-container {
+            height: 300px;
+            width: 100%;
+        }
+
+        /* Ẩn thanh cuộn cho input number */
+        input::-webkit-outer-spin-button,
+        input::-webkit-inner-spin-button {
+            -webkit-appearance: none;
+            margin: 0;
+        }
+
+        .page-content {
+            transition: opacity 0.5s ease, transform 0.5s ease;
+        }
+
+        .hidden-page {
+            display: none;
+            opacity: 0;
+            transform: translateY(20px);
+        }
+
+        .bg-red-50 { background-color: #fef2f2; } /* Red-50: Màu nền đỏ nhạt cho thông báo lỗi */
+
+        .text-red-600 { color: #dc2626; } /* Red-600: Màu đỏ đậm cho tiêu đề lỗi */
+    </style>
+</head>
+<body class="p-4 md:p-8">
+
+    <!-- Login Page -->
+    <div id="loginPage" class="fixed inset-0 z-[100] flex items-center justify-center bg-slate-100 p-4">
+        <div class="glass w-full max-w-md p-10 text-center shadow-2xl">
+            <div class="w-20 h-20 bg-sky-100 rounded-3xl flex items-center justify-center mx-auto mb-8 animate-float">
+                <img src="logo.png" alt="Mephydica Logo" class="w-16 h-16 object-contain">
+            </div>
+            <h1 class="text-2xl font-800 tracking-tight mb-2">GIÁM SÁT THÔNG MINH</h1>
+            <p class="text-slate-500 mb-8 font-medium text-sm">Vui lòng nhập thông tin đăng nhập</p>
+            
+            <form id="loginForm" class="space-y-5 text-left">
+                <div class="space-y-1">
+                    <label class="text-xs font-bold text-slate-500 ml-1 uppercase">Tài khoản</label>
+                    <input type="text" id="username" placeholder="user@gmail.com" class="w-full px-5 py-4 rounded-xl border-none bg-slate-50 shadow-inner focus:ring-2 focus:ring-sky-500 outline-none transition-all" required>
+                </div>
+
+                <div class="space-y-1">
+                    <label class="text-xs font-bold text-slate-500 ml-1 uppercase">Mật khẩu</label>
+                    <input type="password" id="password" placeholder="********" class="w-full px-5 py-4 rounded-xl border-none bg-slate-50 shadow-inner focus:ring-2 focus:ring-sky-500 outline-none transition-all" required>
+                </div>
+                
+                <div id="loginError" class="hidden text-red-500 text-xs font-bold bg-red-50 p-3 rounded-xl border border-red-100 flex items-center gap-2">
+                    <i class="fas fa-exclamation-circle"></i>
+                    <span>Thông tin không chính xác!</span>
+                </div>
+
+                <button type="submit" class="w-full bg-slate-900 text-white font-bold py-4 rounded-xl hover:bg-black transition-all shadow-lg active:scale-[0.98] uppercase tracking-widest text-sm mt-2">
+                    Đăng nhập
+                </button>
+            </form>
+            <p class="mt-6 text-[10px] text-slate-400 font-bold uppercase tracking-widest">Admin: 0789661260</p>
+        </div>
+    </div>
+
+    <!-- Main Dashboard -->
+    <div id="dashboard" class="dashboard-container hidden opacity-0 transition-opacity duration-700">
+        
+        <!-- Header -->
+        <header class="flex flex-col lg:flex-row justify-between items-center mb-10 gap-6">
+            <div class="flex items-center gap-5">
+                <div class="w-12 h-12 bg-white rounded-2xl flex items-center justify-center shadow-sm">
+                    <img src="logo.png" alt="Logo" class="w-10 h-10 object-contain">
+                </div>
+                <div>
+                    <h2 class="text-xl font-800 text-slate-900 tracking-tight">Monitor <span class="text-sky-600">Pro</span></h2>
+                    <div class="flex items-center gap-2">
+                        <span class="flex h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                        <span class="text-[9px] font-bold text-emerald-600 uppercase tracking-widest">Hệ thống sẵn sàng</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Navigation Tabs -->
+            <div class="glass p-1.5 flex gap-1 overflow-x-auto">
+                <button onclick="switchPage(0)" id="nav-0" class="nav-btn active px-6 py-2.5 rounded-xl font-bold text-xs transition-all flex items-center gap-2">
+                    <i class="fas fa-chart-line"></i> Tổng quan
+                </button>
+                <button onclick="switchPage(1)" id="nav-1" class="nav-btn px-6 py-2.5 rounded-xl font-bold text-xs text-slate-500 hover:bg-white transition-all flex items-center gap-2">
+                    <i class="fas fa-layer-group"></i> MÁY BƠM 01
+                </button>
+                <button onclick="switchPage(2)" id="nav-2" class="nav-btn px-6 py-2.5 rounded-xl font-bold text-xs text-slate-500 hover:bg-white transition-all flex items-center gap-2">
+                    <i class="fas fa-layer-group"></i> MÁY BƠM 02
+                </button>
+            </div>
+
+            <div class="flex items-center gap-6">
+                <div class="glass px-6 py-2.5 flex items-center gap-6">
+                    <div class="text-right">
+                        <p id="currentTime" class="text-base font-800 text-slate-800 leading-none">00:00:00</p>
+                        <p id="currentDate" class="text-[9px] font-bold text-slate-400 uppercase mt-1">Đang tải...</p>
+                    </div>
+                    <div class="h-6 w-[1px] bg-slate-200"></div>
+                    <button onclick="logout()" class="text-slate-400 hover:text-red-500 transition-colors" title="Đăng xuất">
+                        <i class="fas fa-sign-out-alt text-lg"></i>
+                    </button>
+                </div>
+            </div>
+        </header>
+
+        <!-- Overview Page -->
+        <div id="page-0" class="page-content">
+            <div class="grid grid-cols-12 gap-6">
+                <div class="col-span-12 lg:col-span-8 space-y-6">
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                        <div class="stat-card glass p-8 flex flex-col justify-between border-t-4 border-sky-500">
+                            <div class="flex justify-between items-start mb-4">
+                                <div class="w-12 h-12 bg-sky-50 rounded-2xl flex items-center justify-center text-sky-600">
+                                    <i class="fas fa-droplet text-xl"></i>
+                                </div>
+                                <span class="text-[10px] font-bold text-sky-600 bg-sky-50 px-2 py-1 rounded-lg uppercase tracking-wider">Live</span>
+                            </div>
+                            <div>
+                                <p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Tổng lưu lượng</p>
+                                <h3 id="overviewTotalFlow" class="text-4xl font-900 text-slate-900">0.0 <span class="text-sm font-bold text-slate-400 uppercase ml-1">L/min</span></h3>
+                            </div>
+                        </div>
+
+                        <div class="stat-card glass p-8 flex flex-col justify-between border-t-4 border-emerald-500">
+                            <div class="flex justify-between items-start mb-4">
+                                <div class="w-12 h-12 bg-emerald-50 rounded-2xl flex items-center justify-center text-emerald-600">
+                                    <i class="fas fa-power-off text-xl"></i>
+                                </div>
+                                <span id="pumpStatusBadge" class="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-1 rounded-lg uppercase tracking-wider">Ổn định</span>
+                            </div>
+                            <div>
+                                <p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Thiết bị hoạt động</p>
+                                <h3 id="overviewPumpsOn" class="text-4xl font-900 text-slate-900">0 <span class="text-sm font-bold text-slate-400 uppercase ml-1">Máy</span></h3>
+                            </div>
+                        </div>
+
+                        <div class="stat-card glass p-8 flex flex-col justify-between border-t-4 border-orange-500">
+                            <div class="flex justify-between items-start mb-4">
+                                <div class="w-12 h-12 bg-orange-50 rounded-2xl flex items-center justify-center text-orange-600">
+                                    <i class="fas fa-clock-rotate-left text-xl"></i>
+                                </div>
+                            </div>
+                            <div>
+                                <p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Cập nhật lần cuối</p>
+                                <h3 id="overviewLastUpdate" class="text-3xl font-900 text-slate-900 tracking-tight">--:--:--</h3>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div class="glass p-6">
+                            <p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-4">Máy bơm 1</p>
+                            <h3 id="overviewStatus-1" class="text-3xl font-900 text-slate-900 mb-3">Đang tắt</h3>
+                            <p class="text-sm text-slate-500">Lưu lượng: <span id="overviewFlow-1">0.0</span> L/min</p>
+                            <p class="text-sm text-slate-500 mt-2">Chế độ: <span id="overviewMode-1">Manual</span></p>
+                        </div>
+                        <div class="glass p-6">
+                            <p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-4">Máy bơm 2</p>
+                            <h3 id="overviewStatus-2" class="text-3xl font-900 text-slate-900 mb-3">Đang tắt</h3>
+                            <p class="text-sm text-slate-500">Lưu lượng: <span id="overviewFlow-2">0.0</span> L/min</p>
+                            <p class="text-sm text-slate-500 mt-2">Chế độ: <span id="overviewMode-2">Manual</span></p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Device Contents -->
+        <div id="page-1" class="page-content hidden-page">
+            <div class="grid grid-cols-12 gap-6">
+                <div class="col-span-12 lg:col-span-8 space-y-6">
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <!-- Pump Status -->
+                        <div id="pumpCard-1" class="stat-card glass p-8 flex flex-col justify-between min-h-[200px] border-l-4 border-l-slate-300">
+                            <div class="flex justify-between items-start">
+                                <div id="pumpIconBox-1" class="w-14 h-14 rounded-2xl bg-slate-100 flex items-center justify-center text-slate-400 transition-all duration-500">
+                                    <i class="fas fa-fan text-xl" id="pumpIcon-1"></i>
+                                </div>
+                                <span class="px-3 py-1 rounded-lg bg-slate-100 text-slate-500 text-[9px] font-extrabold uppercase tracking-widest">Node ID: 101</span>
+                            </div>
+                            <div>
+                                <p class="text-[10px] font-bold uppercase tracking-widest mb-1">Trạng thái máy bơm 1</p>
+                                <h3 id="pumpStatusText-1" class="text-3xl font-900 tracking-tighter text-slate-400">ĐANG TẮT</h3>
+                                <p id="pumpModeText-1" class="text-sm text-slate-400 mt-2">Chế độ: Manual</p>
+                            </div>
+                        </div>
+                        <!-- Flow Rate -->
+                        <div class="stat-card glass p-8 flex flex-col justify-between min-h-[200px] bg-slate-900 text-white">
+                            <div class="flex justify-between items-start">
+                                <div class="w-14 h-14 rounded-2xl bg-white/10 flex items-center justify-center text-sky-400">
+                                    <i class="fas fa-faucet-drip text-xl"></i>
+                                </div>
+                                <span class="px-3 py-1 rounded-lg bg-sky-500/20 text-sky-400 text-[9px] font-extrabold uppercase tracking-widest">Real-time</span>
+                            </div>
+                            <div>
+                                <p class="text-[10px] font-bold text-white uppercase tracking-widest mb-1">Lưu lượng hiện tại</p>
+                                <div class="flex items-baseline gap-2">
+                                    <h3 id="flowRate-1" class="text-5xl font-900 tracking-tighter">0.0</h3>
+                                    <span class="text-sm font-bold text-sky-400 uppercase">L/min</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- Chart -->
+                    <div class="glass p-6">
+                        <div class="flex justify-between items-center mb-6">
+                            <h3 class="font-bold text-slate-800 flex items-center gap-2 uppercase text-[10px] tracking-widest">
+                                <span class="w-2 h-2 rounded-full bg-sky-500"></span> Phân tích lưu lượng máy bơm 1
+                            </h3>
+                        </div>
+                        <div class="chart-container">
+                            <canvas id="flowChart-1"></canvas>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Schedule -->
+                <div class="col-span-12 lg:col-span-4">
+                    <div class="glass p-8 h-full">
+                        <div class="flex items-center gap-4 mb-8">
+                            <div class="w-10 h-10 rounded-xl bg-orange-50 flex items-center justify-center text-orange-500">
+                                <i class="fas fa-calendar-check"></i>
+                            </div>
+                            <h3 class="text-lg font-800 text-slate-800 uppercase tracking-tight">Hẹn giờ bật/tắt</h3>
+                        </div>
+                        <div class="space-y-8">
+                            <div class="bg-slate-50 p-6 rounded-2xl">
+                                <label class="text-[9px] font-800 text-slate-400 uppercase tracking-widest mb-4 block">Thời gian mở máy</label>
+                                <div class="flex items-center gap-3">
+                                    <input type="number" id="onH-1" value="06" min="0" max="23" class="w-full bg-white rounded-xl p-4 text-2xl font-800 text-center shadow-sm outline-none border-2 border-transparent focus:border-sky-500">
+                                    <span class="font-bold text-slate-300">:</span>
+                                    <input type="number" id="onM-1" value="00" min="0" max="59" class="w-full bg-white rounded-xl p-4 text-2xl font-800 text-center shadow-sm outline-none border-2 border-transparent focus:border-sky-500">
+                                </div>
+                            </div>
+                            <div class="bg-slate-50 p-6 rounded-2xl">
+                                <label class="text-[9px] font-800 text-slate-400 uppercase tracking-widest mb-4 block">Thời gian ngắt máy</label>
+                                <div class="flex items-center gap-3">
+                                    <input type="number" id="offH-1" value="18" min="0" max="23" class="w-full bg-white rounded-xl p-4 text-2xl font-800 text-center shadow-sm outline-none border-2 border-transparent focus:border-sky-500">
+                                    <span class="font-bold text-slate-300">:</span>
+                                    <input type="number" id="offM-1" value="30" min="0" max="59" class="w-full bg-white rounded-xl p-4 text-2xl font-800 text-center shadow-sm outline-none border-2 border-transparent focus:border-sky-500">
+                                </div>
+                            </div>
+                            <button onclick="saveSchedule(1)" class="w-full bg-emerald-500 text-white font-bold py-5 rounded-xl hover:bg-emerald-600 transition-all shadow-lg active:scale-95 uppercase tracking-widest text-xs">
+                                LƯU
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Page 2 (Cloned structure for independence) -->
+        <div id="page-2" class="page-content hidden-page">
+            <div class="grid grid-cols-12 gap-6">
+                <div class="col-span-12 lg:col-span-8 space-y-6">
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div id="pumpCard-2" class="stat-card glass p-8 flex flex-col justify-between min-h-[200px] border-l-4 border-l-slate-300">
+                            <div class="flex justify-between items-start">
+                                <div id="pumpIconBox-2" class="w-14 h-14 rounded-2xl bg-slate-100 flex items-center justify-center text-slate-400 transition-all duration-500">
+                                    <i class="fas fa-fan text-xl" id="pumpIcon-2"></i>
+                                </div>
+                                <span class="px-3 py-1 rounded-lg bg-slate-100 text-slate-500 text-[9px] font-extrabold uppercase tracking-widest">Node ID: 102</span>
+                            </div>
+                            <div>
+                                <p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Trạng thái máy bơm 2</p>
+                                <h3 id="pumpStatusText-2" class="text-3xl font-900 tracking-tighter text-slate-400">ĐANG TẮT</h3>
+                                <p id="pumpModeText-2" class="text-sm text-slate-400 mt-2">Chế độ: Manual</p>
+                            </div>
+                        </div>
+                        <div class="stat-card glass p-8 flex flex-col justify-between min-h-[200px] bg-indigo-900 text-white">
+                            <div class="flex justify-between items-start">
+                                <div class="w-14 h-14 rounded-2xl bg-white/10 flex items-center justify-center text-indigo-300">
+                                    <i class="fas fa-faucet-drip text-xl"></i>
+                                </div>
+                                <span class="px-3 py-1 rounded-lg bg-indigo-500/20 text-indigo-300 text-[9px] font-extrabold uppercase tracking-widest">Real-time</span>
+                            </div>
+                            <div>
+                                <p class="text-[10px] font-bold text-white uppercase tracking-widest mb-1">Lưu lượng hiện tại</p>
+                                <div class="flex items-baseline gap-2">
+                                    <h3 id="flowRate-2" class="text-5xl font-900 tracking-tighter">0.0</h3>
+                                    <span class="text-sm font-bold text-indigo-300 uppercase">L/min</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="glass p-6">
+                        <div class="flex justify-between items-center mb-6">
+                            <h3 class="font-bold text-slate-800 flex items-center gap-2 uppercase text-[10px] tracking-widest">
+                                <span class="w-2 h-2 rounded-full bg-indigo-500"></span> Phân tích lưu lượng máy bơm 2
+                            </h3>
+                        </div>
+                        <div class="chart-container">
+                            <canvas id="flowChart-2"></canvas>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="col-span-12 lg:col-span-4">
+                    <div class="glass p-8 h-full">
+                        <div class="flex items-center gap-4 mb-8">
+                            <div class="w-10 h-10 rounded-xl bg-indigo-50 flex items-center justify-center text-indigo-500">
+                                <i class="fas fa-calendar-check"></i>
+                            </div>
+                            <h3 class="text-lg font-800 text-slate-800 uppercase tracking-tight">Hẹn giờ bật/tắt</h3>
+                        </div>
+                        <div class="space-y-8">
+                            <div class="bg-slate-50 p-6 rounded-2xl">
+                                <label class="text-[9px] font-800 text-slate-400 uppercase tracking-widest mb-4 block">Thời gian mở máy</label>
+                                <div class="flex items-center gap-3">
+                                    <input type="number" id="onH-2" value="07" min="0" max="23" class="w-full bg-white rounded-xl p-4 text-2xl font-800 text-center shadow-sm outline-none border-2 border-transparent focus:border-indigo-500">
+                                    <span class="font-bold text-slate-300">:</span>
+                                    <input type="number" id="onM-2" value="00" min="0" max="59" class="w-full bg-white rounded-xl p-4 text-2xl font-800 text-center shadow-sm outline-none border-2 border-transparent focus:border-indigo-500">
+                                </div>
+                            </div>
+                            <div class="bg-slate-50 p-6 rounded-2xl">
+                                <label class="text-[9px] font-800 text-slate-400 uppercase tracking-widest mb-4 block">Thời gian ngắt máy</label>
+                                <div class="flex items-center gap-3">
+                                    <input type="number" id="offH-2" value="19" min="0" max="23" class="w-full bg-white rounded-xl p-4 text-2xl font-800 text-center shadow-sm outline-none border-2 border-transparent focus:border-indigo-500">
+                                    <span class="font-bold text-slate-300">:</span>
+                                    <input type="number" id="offM-2" value="00" min="0" max="59" class="w-full bg-white rounded-xl p-4 text-2xl font-800 text-center shadow-sm outline-none border-2 border-transparent focus:border-indigo-500">
+                                </div>
+                            </div>
+                            <button onclick="saveSchedule(2)" class="w-full bg-indigo-500 text-white font-bold py-5 rounded-xl hover:bg-indigo-600 transition-all shadow-lg active:scale-95 uppercase tracking-widest text-xs">
+                                LƯU
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Notification -->
+    <div id="toast" class="fixed bottom-10 right-10 translate-x-[150%] transition-transform duration-500 z-[200]">
+        <div class="bg-slate-900 text-white px-8 py-5 rounded-2xl shadow-2xl flex items-center gap-5 border border-white/10">
+            <div id="toastIcon" class="w-10 h-10 rounded-xl bg-emerald-500 flex items-center justify-center text-white">
+                <i class="fas fa-check"></i>
+            </div>
+            <div>
+                <p id="toastTitle" class="text-[9px] font-bold text-slate-400 uppercase tracking-widest leading-none mb-1">Thông báo</p>
+                <p id="toastMsg" class="font-bold text-sm">Thành công</p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Accounts Configuration
+        const VALID_CREDENTIALS = {
+            username: 'nlu@gmail.com',
+            password: '12345678'
+        };
+
+        // Firebase Config: chỉ cần cập nhật các giá trị web app
+        const firebaseConfig = {
+            apiKey: "YOUR_API_KEY",
+            authDomain: "cdbt-ccb1c.firebaseapp.com",
+            databaseURL: "https://cdbt-ccb1c-default-rtdb.firebaseio.com",
+            projectId: "cdbt-ccb1c",
+            storageBucket: "cdbt-ccb1c.appspot.com",
+            messagingSenderId: "YOUR_SENDER_ID",
+            appId: "YOUR_APP_ID"
+        };
+
+        let firebaseInitialized = false;
+        let database = null;
+
+        // State Management
+        const devices = {
+            1: {
+                isOn: false,
+                chart: null,
+                data: [],
+                latestFlow: 0,
+                mode: 'Manual',
+                latestUpdate: null,
+                color: '#0ea5e9'
+            },
+            2: {
+                isOn: false,
+                chart: null,
+                data: [],
+                latestFlow: 0,
+                mode: 'Manual',
+                latestUpdate: null,
+                color: '#6366f1'
+            },
+            
+        };
+
+        let isLoggedIn = false;
+        let activePage = 0;
+
+        // Login Logic
+        document.getElementById('loginForm').onsubmit = (e) => {
+            e.preventDefault();
+            const u = document.getElementById('username').value;
+            const p = document.getElementById('password').value;
+            const err = document.getElementById('loginError');
+
+            if (u === VALID_CREDENTIALS.username && p === VALID_CREDENTIALS.password) {
+                err.classList.add('hidden');
+                document.getElementById('loginPage').style.display = 'none';
+                const dash = document.getElementById('dashboard');
+                dash.classList.remove('hidden');
+                setTimeout(() => {
+                    dash.classList.add('opacity-100');
+                    initFirebase();
+                    isLoggedIn = true;
+                }, 50);
+                showToast("Truy cập hệ thống thành công", "Hệ thống", "success");
+            } else {
+                err.classList.remove('hidden');
+                err.classList.add('animate-shake');
+                setTimeout(() => err.classList.remove('animate-shake'), 500);
+            }
+        };
+
+        function logout() {
+            isLoggedIn = false;
+            document.getElementById('dashboard').classList.add('hidden');
+            document.getElementById('dashboard').classList.remove('opacity-100');
+            document.getElementById('loginPage').style.display = 'flex';
+            showToast("Đã đăng xuất an toàn", "Tạm biệt", "info");
+        }
+
+        // Switch Page
+        function switchPage(id) {
+            if (!isLoggedIn || activePage === id) return;
+
+            document.getElementById(`page-${activePage}`).classList.add('hidden-page');
+            document.getElementById(`nav-${activePage}`).classList.remove('active');
+
+            activePage = id;
+
+            const next = document.getElementById(`page-${id}`);
+            next.classList.remove('hidden-page');
+            document.getElementById(`nav-${id}`).classList.add('active');
+
+            if (!devices[id].chart) {
+                setTimeout(() => initChart(id), 100);
+            }
+        }
+
+        function initChart(id) {
+            const canvas = document.getElementById(`flowChart-${id}`);
+            if (!canvas) return;
+
+            const ctx = canvas.getContext('2d');
+            devices[id].chart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    datasets: [{
+                        data: devices[id].data,
+                        borderColor: devices[id].color,
+                        backgroundColor: (context) => {
+                            const chart = context.chart;
+                            const {ctx, chartArea} = chart;
+                            if (!chartArea) return null;
+                            const gradient = ctx.createLinearGradient(0, chartArea.bottom, 0, chartArea.top);
+                            gradient.addColorStop(0, 'rgba(255,255,255,0)');
+                            gradient.addColorStop(1, devices[id].color + '22');
+                            return gradient;
+                        },
+                        borderWidth: 3,
+                        fill: true,
+                        tension: 0.4,
+                        pointRadius: 4,
+                        pointHoverRadius: 6
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            mode: 'nearest',
+                            intersect: false,
+                            callbacks: {
+                                label: (context) => `Lưu lượng: ${context.formattedValue} L/min`,
+                                title: (items) => {
+                                    const item = items[0];
+                                    return item.label || new Date(item.parsed.x).toLocaleTimeString('vi-VN', { hour12: false });
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            grid: { color: 'rgba(0,0,0,0.03)' },
+                            ticks: { font: { size: 10, weight: '600' } }
+                        },
+                        x: {
+                            type: 'time', // Xác định đây là trục thời gian 
+                            time: {
+                                unit: 'minute', // Đơn vị chia nhỏ nhất là phút 
+                                tooltipFormat: 'HH:mm:ss', // Định dạng khi di chuột vào điểm dữ liệu 
+                                displayFormats: {
+                                    minute: 'HH:mm' // Định dạng hiển thị dưới chân trục X [cite: 134]
+                                }
+                            },
+                            ticks: {
+                                font: { size: 10, weight: '600' } // Tùy chỉnh font chữ cho dễ nhìn [cite: 134]
+                            }
+                        }
+                    },
+                    animation: { duration: 0 }
+                }
+            });
+        }
+
+        function initFirebase() {
+            if (firebaseInitialized) return;
+            try {
+                firebase.initializeApp(firebaseConfig);
+                database = firebase.database();
+                firebaseInitialized = true;
+                [1, 2].forEach(listenToDevice);
+            } catch (error) {
+                console.error('Firebase init error:', error);
+                showToast('Không thể khởi tạo Firebase', 'Firebase', 'danger');
+            }
+        }
+
+        function listenToDevice(id) {
+            const path = `Cabinet${id}`;
+            const deviceRef = database.ref(path);
+            deviceRef.on('value', (snapshot) => {
+                const data = snapshot.val();
+                if (!data) return;
+
+                const isOn = Boolean(data.Run);
+                const flowRate = parseFloat(data.Flow || 0).toFixed(1);
+                const mode = String(data.Mode) === '1' ? 'Auto' : 'Manual';
+                
+                // Lấy trạng thái Alarm (Ví dụ: 1 là quá tải, 0 là bình thường)
+                const alarmStatus = parseInt(data.Alarm || 0); 
+                
+                const history = Array.isArray(data.history) ? data.history.slice(-25) : null;
+                
+                // Truyền thêm biến alarmStatus vào hàm cập nhật UI
+                updateDeviceFromFirebase(id, isOn, flowRate, history, data, mode, alarmStatus);
+            });
+        }
+
+        function updateDeviceFromFirebase(id, isOn, flowRate, history, data, mode, alarmStatus) {
+            devices[id].isOn = isOn;
+            devices[id].latestFlow = parseFloat(flowRate) || 0;
+            devices[id].mode = mode || 'Manual';
+            devices[id].latestUpdate = new Date();
+            
+            // 1. Cập nhật trạng thái Alarm vào dữ liệu thiết bị
+            devices[id].alarm = alarmStatus; 
+
+            document.getElementById(`flowRate-${id}`).innerText = flowRate;
+            updateUI(id, isOn, devices[id].mode);
+
+            // 2. Logic hiển thị cảnh báo quá tải
+            if (alarmStatus === 1) {
+                // Hiển thị thông báo đỏ (Danger)
+                showToast(`CẢNH BÁO: Động cơ khu vực ${id} bị quá tải!`, `Hệ thống`, "danger");
+            }
+
+            if (data) {
+                const hourOn = parseInt(data.HourOn, 10);
+                const minuteOn = parseInt(data.MinuteOn, 10);
+                const hourOff = parseInt(data.HourOff, 10);
+                const minuteOff = parseInt(data.MinuteOff, 10);
+                if (!Number.isNaN(hourOn)) document.getElementById(`onH-${id}`).value = String(hourOn).padStart(2, '0');
+                if (!Number.isNaN(minuteOn)) document.getElementById(`onM-${id}`).value = String(minuteOn).padStart(2, '0');
+                if (!Number.isNaN(hourOff)) document.getElementById(`offH-${id}`).value = String(hourOff).padStart(2, '0');
+                if (!Number.isNaN(minuteOff)) document.getElementById(`offM-${id}`).value = String(minuteOff).padStart(2, '0');
+            }
+
+            if (history) {
+                const values = history.map((item) => parseFloat(item) || 0);
+                devices[id].data = buildTimePoints(values);
+            } else {
+                const value = parseFloat(flowRate) || 0;
+                devices[id].data.push({
+                    x: new Date(), 
+                    y: value
+                });
+                if (devices[id].data.length > 25) devices[id].data.shift();
+            }
+
+            if (devices[id].chart) {
+                devices[id].chart.data.datasets[0].data = devices[id].data;
+                if (activePage === id) devices[id].chart.update();
+            }
+
+            updateOverview();
+        }
+
+        function updateOverview() {
+            const totalFlow = (devices[1].latestFlow || 0) + (devices[2].latestFlow || 0);
+            const pumpsOn = [1, 2].filter((id) => devices[id].isOn).length;
+            const lastUpdate = [devices[1].latestUpdate, devices[2].latestUpdate]
+                .filter(Boolean)
+                .sort((a, b) => b - a)[0];
+
+            document.getElementById('overviewTotalFlow').innerText = `${totalFlow.toFixed(1)}`;
+            document.getElementById('overviewPumpsOn').innerText = pumpsOn;
+            document.getElementById('overviewLastUpdate').innerText = lastUpdate ? lastUpdate.toLocaleTimeString('vi-VN', { hour12: false }) : '--:--:--';
+            document.getElementById('overviewFlow-1').innerText = devices[1].latestFlow.toFixed(1);
+            document.getElementById('overviewFlow-2').innerText = devices[2].latestFlow.toFixed(1);
+            document.getElementById('overviewStatus-1').innerText = devices[1].isOn ? 'ĐANG HOẠT ĐỘNG' : 'ĐANG TẮT';
+            document.getElementById('overviewStatus-2').innerText = devices[2].isOn ? 'ĐANG HOẠT ĐỘNG' : 'ĐANG TẮT';
+            document.getElementById('overviewMode-1').innerText = devices[1].mode || 'Manual';
+            document.getElementById('overviewMode-2').innerText = devices[2].mode || 'Manual';
+        }
+        function logic() {
+            const now = new Date();
+
+            const timeStr = now.toLocaleTimeString('vi-VN', { hour12: false });
+            const dateStr = now.toLocaleDateString('vi-VN', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+
+            if (document.getElementById('currentTime')) document.getElementById('currentTime').innerText = timeStr;
+            if (document.getElementById('currentDate')) document.getElementById('currentDate').innerText = dateStr;
+        }
+
+        function buildTimePoints(values) {
+            const now = Date.now();
+            const interval = 60 * 1000;
+            return values.map((value, index) => ({
+                x: new Date(now - (values.length - index - 1) * interval),
+                y: value
+            }));
+        }
+
+        function updateUI(id, isOn, mode) {
+            const card = document.getElementById(`pumpCard-${id}`);
+            const iconBox = document.getElementById(`pumpIconBox-${id}`);
+            const text = document.getElementById(`pumpStatusText-${id}`);
+            const modeText = document.getElementById(`pumpModeText-${id}`);
+
+            if (isOn) {
+                card.classList.add('pump-active');
+                card.style.borderLeftColor = '#10b981';
+                iconBox.classList.add('bg-white/20', 'text-white', 'animate-spin');
+                text.innerText = "ĐANG HOẠT ĐỘNG";
+                text.classList.replace('text-slate-400', 'text-white');
+                if (modeText) {
+                    modeText.classList.remove('text-slate-400');
+                    modeText.classList.add('text-white');
+                }
+            } else {
+                card.classList.remove('pump-active');
+                card.style.borderLeftColor = '#cbd5e1';
+                iconBox.classList.remove('bg-white/20', 'text-white', 'animate-spin');
+                text.innerText = "ĐANG TẮT";
+                text.classList.replace('text-white', 'text-slate-400');
+                if (modeText) {
+                    modeText.classList.remove('text-white');
+                    modeText.classList.add('text-slate-400');
+                }
+            }
+
+            if (modeText) {
+                modeText.innerText = `Chế độ: ${mode || devices[id].mode || 'Manual'}`;
+            }
+        }
+
+        function saveSchedule(id) {
+            const on = `${document.getElementById(`onH-${id}`).value}:${document.getElementById(`onM-${id}`).value}`;
+            const off = `${document.getElementById(`offH-${id}`).value}:${document.getElementById(`offM-${id}`).value}`;
+            showToast(`Lịch trình [${on} - ${off}] đã được áp dụng`, `Cài đặt TB${id}`, "success");
+        }
+
+        function showToast(msg, title, type) {
+            const toast = document.getElementById('toast');
+            document.getElementById('toastMsg').innerText = msg;
+            document.getElementById('toastTitle').innerText = title;
+            toast.classList.remove('translate-x-[150%]');
+            setTimeout(() => { toast.classList.add('translate-x-[150%]'); }, 4000);
+        }
+
+        // Init
+        setInterval(logic, 1000);
+        window.onload = logic;
+    </script>
+</body>
+</html>
