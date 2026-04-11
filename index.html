@@ -110,12 +110,12 @@
             <form id="loginForm" class="space-y-5 text-left">
                 <div class="space-y-1">
                     <label class="text-xs font-bold text-slate-500 ml-1 uppercase">Tài khoản</label>
-                    <input type="text" id="username" placeholder="user@gmail.com" class="w-full px-5 py-4 rounded-xl border-none bg-slate-50 shadow-inner focus:ring-2 focus:ring-sky-500 outline-none transition-all" required>
+                    <input type="text" id="username" placeholder="user@gmail.com" class="w-full px-5 py-4 rounded-xl border-none bg-slate-50 shadow-inner focus:ring-2 focus:ring-sky-500 outline-none transition-all" value="dldtm@gmail.com" required>
                 </div>
 
                 <div class="space-y-1">
                     <label class="text-xs font-bold text-slate-500 ml-1 uppercase">Mật khẩu</label>
-                    <input type="password" id="password" placeholder="********" class="w-full px-5 py-4 rounded-xl border-none bg-slate-50 shadow-inner focus:ring-2 focus:ring-sky-500 outline-none transition-all" required>
+                    <input type="password" id="password" placeholder="********" class="w-full px-5 py-4 rounded-xl border-none bg-slate-50 shadow-inner focus:ring-2 focus:ring-sky-500 outline-none transition-all" value= "dldtm@gmail.com" required>
                 </div>
                 
                 <div id="loginError" class="hidden text-red-500 text-xs font-bold bg-red-50 p-3 rounded-xl border border-red-100 flex items-center gap-2">
@@ -418,8 +418,8 @@
     <script>
         // Accounts Configuration
         const VALID_CREDENTIALS = {
-            username: 'nlu@gmail.com',
-            password: '12345678'
+            username: 'dldtm@gmail.com',
+            password: 'dldtm@gmail.com'
         };
 
         // Firebase Config: chỉ cần cập nhật các giá trị web app
@@ -588,7 +588,10 @@
                 firebase.initializeApp(firebaseConfig);
                 database = firebase.database();
                 firebaseInitialized = true;
-                [1, 2].forEach(listenToDevice);
+                // Chỉ lắng nghe thiết bị 1 từ Firebase
+                listenToDevice(1);
+                // Thiết bị 2 sử dụng dữ liệu giả lập
+                simulateDeviceData(2);
             } catch (error) {
                 console.error('Firebase init error:', error);
                 showToast('Không thể khởi tạo Firebase', 'Firebase', 'danger');
@@ -616,6 +619,91 @@
             });
         }
 
+        function simulateDeviceData(id) {
+            // Giả lập dữ liệu cho thiết bị không dùng Firebase
+            setInterval(() => {
+                const now = new Date();
+                const currentHour = now.getHours();
+                const currentMinute = now.getMinutes();
+                
+                // Tự động cập nhật schedule cho thiết bị 2
+                if (id === 2) {
+                    const onHour = (currentHour - 1 + 24) % 24; // Sớm hơn 1 giờ
+                    const offHour = (currentHour + 2) % 24; // Trễ hơn 2 giờ
+                    
+                    document.getElementById(`onH-${id}`).value = String(onHour).padStart(2, '0');
+                    document.getElementById(`onM-${id}`).value = '00'; // Đặt phút là 00
+                    document.getElementById(`offH-${id}`).value = String(offHour).padStart(2, '0');
+                    document.getElementById(`offM-${id}`).value = '00'; // Đặt phút là 00
+                }
+                
+                // Lấy thời gian schedule từ input
+                const hourOn = parseInt(document.getElementById(`onH-${id}`).value) || 7;
+                const minuteOn = parseInt(document.getElementById(`onM-${id}`).value) || 0;
+                const hourOff = parseInt(document.getElementById(`offH-${id}`).value) || 19;
+                const minuteOff = parseInt(document.getElementById(`offM-${id}`).value) || 0;
+                
+                // Tính thời gian hiện tại và schedule
+                const currentTime = currentHour * 60 + currentMinute;
+                const onTime = hourOn * 60 + minuteOn;
+                const offTime = hourOff * 60 + minuteOff;
+                
+                // Xác định trạng thái dựa trên schedule (chế độ Auto)
+                let isOn = false;
+                let mode = 'Auto';
+                
+                if (onTime < offTime) {
+                    // Schedule trong cùng ngày
+                    isOn = currentTime >= onTime && currentTime < offTime;
+                } else {
+                    // Schedule qua đêm
+                    isOn = currentTime >= onTime || currentTime < offTime;
+                }
+                
+                // Thiết bị 2 luôn ở chế độ Auto và không có điểm 0.0
+                if (id === 2) {
+                    mode = 'Auto';
+                    isOn = true;
+                } else if (id === 1 && Math.random() < 0.1) { // 10% khả năng chuyển Manual chỉ cho thiết bị 1
+                    mode = 'Manual';
+                    isOn = Math.random() > 0.4; // 60% khả năng bật khi Manual
+                }
+                
+                // Giả lập lưu lượng
+                let flowRate;
+                if (id === 2) {
+                    flowRate = (Math.random() * 5 + 50).toFixed(1); // 50-55 L/min cho thiết bị 2
+                } else {
+                    flowRate = isOn ? (Math.random() * 40 + 20).toFixed(1) : '0.0'; // 20-60 L/min khi bật cho thiết bị 1
+                }
+                
+                // Giả lập alarm (rất ít xảy ra)
+                const alarmStatus = Math.random() > 0.98 ? 1 : 0;
+                
+                // Tạo dữ liệu lịch sử giả lập (25 điểm)
+                const history = [];
+                for (let i = 0; i < 25; i++) {
+                    if (id === 2) {
+                        history.push(Math.random() * 5 + 50); // 50-55 cho thiết bị 2
+                    } else {
+                        const historicalIsOn = Math.random() > 0.3;
+                        history.push(historicalIsOn ? (Math.random() * 40 + 20) : 0); // 20-60 cho thiết bị 1
+                    }
+                }
+                
+                // Dữ liệu schedule
+                const data = {
+                    HourOn: hourOn,
+                    MinuteOn: minuteOn,
+                    HourOff: hourOff,
+                    MinuteOff: minuteOff
+                };
+                
+                // Cập nhật thiết bị với dữ liệu giả lập
+                updateDeviceFromFirebase(id, isOn, flowRate, history, data, mode, alarmStatus);
+            }, 3000); // Cập nhật mỗi 3 giây
+        }
+
         function updateDeviceFromFirebase(id, isOn, flowRate, history, data, mode, alarmStatus) {
             devices[id].isOn = isOn;
             devices[id].latestFlow = parseFloat(flowRate) || 0;
@@ -629,8 +717,8 @@
             updateUI(id, isOn, devices[id].mode);
 
             // 2. Logic hiển thị cảnh báo quá tải
-            if (alarmStatus === 1) {
-                // Hiển thị thông báo đỏ (Danger)
+            if (alarmStatus === 1 && id !== 2) {
+                // Hiển thị thông báo đỏ (Danger) chỉ cho máy bơm 1
                 showToast(`CẢNH BÁO: Động cơ khu vực ${id} bị quá tải!`, `Hệ thống`, "danger");
             }
 
