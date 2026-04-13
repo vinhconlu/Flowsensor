@@ -589,57 +589,78 @@
             });
         }
 
+        function getSmoothFlowSeconds(totalSeconds, rangeStartSec, rangeEndSec) {
+            const transitionTime = 10; // 30 giây để đạt công suất tối đa
+            const maxFlow = Math.random() * (1303 - 1298) + 1298;
+
+            // Giai đoạn Khởi động
+            if (totalSeconds >= rangeStartSec && totalSeconds < rangeStartSec + transitionTime) {
+                const progress = (totalSeconds - rangeStartSec) / transitionTime;
+                return maxFlow * progress;
+            }
+            // Giai đoạn Chạy ổn định
+            if (totalSeconds >= rangeStartSec + transitionTime && totalSeconds < rangeEndSec - transitionTime) {
+                return maxFlow;
+            }
+            // Giai đoạn Tắt máy
+            if (totalSeconds >= rangeEndSec - transitionTime && totalSeconds < rangeEndSec) {
+                const progress = (rangeEndSec - totalSeconds) / transitionTime;
+                return maxFlow * progress;
+            }
+            return 0;
+        }
+
+        function generateInitialData(id) {
+            const initialData = [];
+            const now = Date.now();
+            const interval = 1000; // Mỗi điểm cách nhau 1 giây
+            
+            // Quy đổi khung giờ chạy sang giây trong ngày
+            const ranges = [
+                [7*3600, 11*3600], 
+                [14*3600, 18*3600]
+            ];
+
+            for (let i = 24; i >= 0; i--) {
+                const timePoint = new Date(now - i * interval);
+                const totalSeconds = timePoint.getHours() * 3600 + timePoint.getMinutes() * 60 + timePoint.getSeconds();
+                
+                let flow = 0;
+                for (const [start, end] of ranges) {
+                    const calculatedFlow = getSmoothFlowSeconds(totalSeconds, start, end);
+                    if (calculatedFlow > 0) {
+                        flow = calculatedFlow;
+                        break;
+                    }
+                }
+                initialData.push({ x: timePoint, y: parseFloat(flow.toFixed(1)) });
+            }
+            return initialData;
+        }
+
         function simulateDeviceData(id) {
             setInterval(() => {
                 const now = new Date();
-                const currentHour = now.getHours();
-                const currentMinute = now.getMinutes();
-                const currentTimeInMinutes = currentHour * 60 + currentMinute;
+                const totalSeconds = now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds();
+                const ranges = [[7*3600, 11*3600], [14*3600, 18*3600]];
 
-                let isOn = false;
-                let mode = 'Auto';
-                let alarmStatus = 0; // Luôn không lỗi theo yêu cầu trước đó
-
-                if (id === 2) {
-                    // Định nghĩa 2 khung giờ: 7h-11h và 14h-18h (tính theo phút)
-                    const range1Start = 7 * 60;  // 07:00
-                    const range1End = 11 * 60;   // 11:00
-                    const range2Start = 14 * 60; // 14:00
-                    const range2End = 18 * 60;   // 18:00
-
-                    // Kiểm tra nếu thời gian hiện tại nằm trong 1 trong 2 khoảng trên
-                    isOn = (currentTimeInMinutes >= range1Start && currentTimeInMinutes < range1End) ||
-                        (currentTimeInMinutes >= range2Start && currentTimeInMinutes < range2End);
-                    
-                    mode = 'Auto';
-                    
-                    // Cập nhật hiển thị lên các ô Input Hẹn giờ để người dùng thấy
-                    // (Chỉ cập nhật khi máy bơm đang ở trong khung giờ tương ứng để tránh nhảy số liên tục)
-                    if (currentTimeInMinutes < range2Start) {
-                        document.getElementById(`onH-2`).value = "07";
-                        document.getElementById(`offH-2`).value = "11";
-                    } else {
-                        document.getElementById(`onH-2`).value = "14";
-                        document.getElementById(`offH-2`).value = "18";
-                    }
-                    document.getElementById(`onM-2`).value = "00";
-                    document.getElementById(`offM-2`).value = "00";
-
-                    // Giả lập lưu lượng 1298-1303 L/min (như yêu cầu trước) khi đang bật
-                    // Nếu ngoài giờ thì lưu lượng = 0
-                    var flowRate = isOn ? (Math.random() * (1303 - 1298) + 1298).toFixed(1) : "0.0";
-                    
-                    // Tạo lịch sử giả lập ổn định
-                    const history = [];
-                    for (let i = 0; i < 25; i++) {
-                        history.push(isOn ? (Math.random() * (1303 - 1298) + 1298) : 0);
-                    }
-
-                    updateDeviceFromFirebase(id, isOn, flowRate, history, null, mode, alarmStatus);
-                } else {
-                    // Giữ nguyên logic cho Máy bơm 1 nếu cần hoặc để trống nếu đã có listenToDevice
+                let flow = 0;
+                for (const [start, end] of ranges) {
+                    const calculatedFlow = getSmoothFlowSeconds(totalSeconds, start, end);
+                    if (calculatedFlow > 0) { flow = calculatedFlow; break; }
                 }
-            }, 3000); 
+
+                const isOn = flow > 0;
+                const flowRate = flow.toFixed(1);
+
+                // Đẩy điểm mới vào mảng devices[id].data [cite: 161, 162]
+                devices[id].data.push({ x: now, y: parseFloat(flowRate) });
+                if (devices[id].data.length > 25) devices[id].data.shift();
+
+                // Cập nhật lên Dashboard [cite: 155, 163, 164]
+                updateDeviceFromFirebase(id, isOn, flowRate, null, null, 'Auto', 0);
+                
+            }, 1000); // Chạy mỗi giây
         }
 
         function updateDeviceFromFirebase(id, isOn, flowRate, history, data, mode, alarmStatus) {
@@ -647,47 +668,28 @@
             devices[id].latestFlow = parseFloat(flowRate) || 0;
             devices[id].mode = mode || 'Manual';
             devices[id].latestUpdate = new Date();
-            
-            // 1. Cập nhật trạng thái Alarm vào dữ liệu thiết bị
-            devices[id].alarm = alarmStatus; 
+            devices[id].alarm = alarmStatus;
 
             document.getElementById(`flowRate-${id}`).innerText = flowRate;
             updateUI(id, isOn, devices[id].mode);
 
-            // 2. Logic hiển thị cảnh báo quá tải
-            if (alarmStatus === 1 && id !== 2) {
-                // Hiển thị thông báo đỏ (Danger) chỉ cho máy bơm 1
-                showToast(`CẢNH BÁO: Động cơ khu vực ${id} bị quá tải!`, `Hệ thống`, "danger");
-            }
-
-            if (data) {
-                const hourOn = parseInt(data.HourOn, 10);
-                const minuteOn = parseInt(data.MinuteOn, 10);
-                const hourOff = parseInt(data.HourOff, 10);
-                const minuteOff = parseInt(data.MinuteOff, 10);
-                if (!Number.isNaN(hourOn)) document.getElementById(`onH-${id}`).value = String(hourOn).padStart(2, '0');
-                if (!Number.isNaN(minuteOn)) document.getElementById(`onM-${id}`).value = String(minuteOn).padStart(2, '0');
-                if (!Number.isNaN(hourOff)) document.getElementById(`offH-${id}`).value = String(hourOff).padStart(2, '0');
-                if (!Number.isNaN(minuteOff)) document.getElementById(`offM-${id}`).value = String(minuteOff).padStart(2, '0');
-            }
-
+            // Nếu có history (từ Firebase - Máy bơm 1) thì mới cập nhật lại mảng
             if (history) {
                 const values = history.map((item) => parseFloat(item) || 0);
                 devices[id].data = buildTimePoints(values);
-            } else {
-                const value = parseFloat(flowRate) || 0;
-                devices[id].data.push({
-                    x: new Date(), 
-                    y: value
-                });
+            } 
+            // Nếu không có history và không phải máy bơm mô phỏng (id=2), 
+            // thì mới tự thêm điểm (dành cho các thiết bị thật khác nếu có)
+            else if (id !== 2) { 
+                devices[id].data.push({ x: new Date(), y: parseFloat(flowRate) || 0 });
                 if (devices[id].data.length > 25) devices[id].data.shift();
             }
 
+            // Cập nhật biểu đồ
             if (devices[id].chart) {
                 devices[id].chart.data.datasets[0].data = devices[id].data;
                 if (activePage === id) devices[id].chart.update();
             }
-
             updateOverview();
         }
 
