@@ -336,38 +336,6 @@
                         </div>
                     </div>
                 </div>
-
-                <div class="col-span-12 lg:col-span-4">
-                    <div class="glass p-8 h-full">
-                        <div class="flex items-center gap-4 mb-8">
-                            <div class="w-10 h-10 rounded-xl bg-indigo-50 flex items-center justify-center text-indigo-500">
-                                <i class="fas fa-calendar-check"></i>
-                            </div>
-                            <h3 class="text-lg font-800 text-slate-800 uppercase tracking-tight">Hẹn giờ bật/tắt</h3>
-                        </div>
-                        <div class="space-y-8">
-                            <div class="bg-slate-50 p-6 rounded-2xl">
-                                <label class="text-[9px] font-800 text-slate-400 uppercase tracking-widest mb-4 block">Thời gian mở máy</label>
-                                <div class="flex items-center gap-3">
-                                    <input type="number" id="onH-2" value="07" min="0" max="23" class="w-full bg-white rounded-xl p-4 text-2xl font-800 text-center shadow-sm outline-none border-2 border-transparent focus:border-indigo-500">
-                                    <span class="font-bold text-slate-300">:</span>
-                                    <input type="number" id="onM-2" value="00" min="0" max="59" class="w-full bg-white rounded-xl p-4 text-2xl font-800 text-center shadow-sm outline-none border-2 border-transparent focus:border-indigo-500">
-                                </div>
-                            </div>
-                            <div class="bg-slate-50 p-6 rounded-2xl">
-                                <label class="text-[9px] font-800 text-slate-400 uppercase tracking-widest mb-4 block">Thời gian ngắt máy</label>
-                                <div class="flex items-center gap-3">
-                                    <input type="number" id="offH-2" value="19" min="0" max="23" class="w-full bg-white rounded-xl p-4 text-2xl font-800 text-center shadow-sm outline-none border-2 border-transparent focus:border-indigo-500">
-                                    <span class="font-bold text-slate-300">:</span>
-                                    <input type="number" id="offM-2" value="00" min="0" max="59" class="w-full bg-white rounded-xl p-4 text-2xl font-800 text-center shadow-sm outline-none border-2 border-transparent focus:border-indigo-500">
-                                </div>
-                            </div>
-                            <button onclick="saveSchedule(2)" class="w-full bg-indigo-500 text-white font-bold py-5 rounded-xl hover:bg-indigo-600 transition-all shadow-lg active:scale-95 uppercase tracking-widest text-xs">
-                                LƯU
-                            </button>
-                        </div>
-                    </div>
-                </div>
             </div>
         </div>
     </div>
@@ -551,13 +519,15 @@
         function initFirebase() {
             if (firebaseInitialized) return;
             try {
+                // Khởi tạo Firebase nhưng không gọi listenToDevice cho máy 1 nữa
                 firebase.initializeApp(firebaseConfig);
                 database = firebase.database();
                 firebaseInitialized = true;
-                // Chỉ lắng nghe thiết bị 1 từ Firebase
-                listenToDevice(1);
-                // Thiết bị 2 sử dụng dữ liệu giả lập
+                
+                // Cả hai thiết bị giờ đây đều dùng dữ liệu giả lập
+                simulateDeviceData(1); 
                 simulateDeviceData(2);
+                
             } catch (error) {
                 console.error('Firebase init error:', error);
                 showToast('Không thể khởi tạo Firebase', 'Firebase', 'danger');
@@ -588,54 +558,32 @@
         function simulateDeviceData(id) {
             setInterval(() => {
                 const now = new Date();
-                const currentHour = now.getHours();
                 const currentMinute = now.getMinutes();
-                const currentTimeInMinutes = currentHour * 60 + currentMinute;
-
+                const currentSecond = now.getSeconds();
+                
                 let isOn = false;
                 let mode = 'Auto';
-                let alarmStatus = 0; // Luôn không lỗi theo yêu cầu trước đó
+                let alarmStatus = 0; 
 
-                if (id === 2) {
-                    // Định nghĩa 2 khung giờ: 7h-11h và 14h-18h (tính theo phút)
-                    const range1Start = 7 * 60;  // 07:00
-                    const range1End = 11 * 60;   // 11:00
-                    const range2Start = 14 * 60; // 14:00
-                    const range2End = 18 * 60;   // 18:00
-
-                    // Kiểm tra nếu thời gian hiện tại nằm trong 1 trong 2 khoảng trên
-                    isOn = (currentTimeInMinutes >= range1Start && currentTimeInMinutes < range1End) ||
-                        (currentTimeInMinutes >= range2Start && currentTimeInMinutes < range2End);
-                    
-                    mode = 'Auto';
-                    
-                    // Cập nhật hiển thị lên các ô Input Hẹn giờ để người dùng thấy
-                    // (Chỉ cập nhật khi máy bơm đang ở trong khung giờ tương ứng để tránh nhảy số liên tục)
-                    if (currentTimeInMinutes < range2Start) {
-                        document.getElementById(`onH-2`).value = "07";
-                        document.getElementById(`offH-2`).value = "11";
-                    } else {
-                        document.getElementById(`onH-2`).value = "14";
-                        document.getElementById(`offH-2`).value = "18";
-                    }
-                    document.getElementById(`onM-2`).value = "00";
-                    document.getElementById(`offM-2`).value = "00";
-
-                    // Giả lập lưu lượng 1298-1303 L/min (như yêu cầu trước) khi đang bật
-                    // Nếu ngoài giờ thì lưu lượng = 0
-                    var flowRate = isOn ? (Math.random() * (1303 - 1298) + 1298).toFixed(0) : "0";
-                    
-                    // Tạo lịch sử giả lập ổn định
-                    const history = [];
-                    for (let i = 0; i < 25; i++) {
-                        history.push(isOn ? (Math.random() * (1303 - 1298) + 1298) : 0);
-                    }
-
-                    updateDeviceFromFirebase(id, isOn, flowRate, history, null, mode, alarmStatus);
+                if (id === 1) {
+                    // Chạy chính xác trong 30 giây đầu của phút 0 và phút 30
+                    isOn = (currentMinute === 0 || currentMinute === 30) && (currentSecond < 30);
                 } else {
-                    // Giữ nguyên logic cho Máy bơm 1 nếu cần hoặc để trống nếu đã có listenToDevice
+                    // Máy 2 chạy theo khung giờ cố định như cũ
+                    const currentHour = now.getHours();
+                    const currentTimeInMinutes = currentHour * 60 + currentMinute;
+                    isOn = (currentTimeInMinutes >= 420 && currentTimeInMinutes < 660) || // 7h-11h
+                        (currentTimeInMinutes >= 840 && currentTimeInMinutes < 1080);  // 14h-18h
                 }
-            }, 3000); 
+
+                // Cập nhật lưu lượng: Nếu On thì dao động quanh 1300, nếu Off thì về 0
+                var flowRate = isOn ? (Math.random() * 5 + 1298).toFixed(0) : "0";
+
+                // Chỉ truyền history nếu bạn muốn hiển thị lại toàn bộ biểu đồ cũ, 
+                // nếu không để updateDeviceFromFirebase tự thêm điểm mới vào mảng data của device.
+                updateDeviceFromFirebase(id, isOn, flowRate, null, null, mode, alarmStatus);
+                
+            }, 1000); // Cập nhật mỗi 1 giây để đảm bảo độ chính xác cho máy bơm 1
         }
 
         function updateDeviceFromFirebase(id, isOn, flowRate, history, data, mode, alarmStatus) {
