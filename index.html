@@ -560,30 +560,34 @@
                 const now = new Date();
                 const currentMinute = now.getMinutes();
                 const currentSecond = now.getSeconds();
-                
+                const currentHour = now.getHours(); // Lấy giờ hiện tại
+
                 let isOn = false;
                 let mode = 'Auto';
                 let alarmStatus = 0; 
 
                 if (id === 1) {
-                    // Chạy chính xác trong 30 giây đầu của phút 0 và phút 30
-                    isOn = (currentMinute === 0 || currentMinute === 30) && (currentSecond < 30);
-                } else {
-                    // Máy 2 chạy theo khung giờ cố định như cũ
-                    const currentHour = now.getHours();
+                    // Chuyển đổi thời gian hiện tại thành tổng số phút trong ngày để so sánh
                     const currentTimeInMinutes = currentHour * 60 + currentMinute;
-                    isOn = (currentTimeInMinutes >= 420 && currentTimeInMinutes < 660) || // 7h-11h
-                        (currentTimeInMinutes >= 840 && currentTimeInMinutes < 1080);  // 14h-18h
+                    
+                    // Khung giờ: 8h00 (480 phút) đến 9h30 (570 phút)
+                    const startLimit = 8 * 60;     // 480
+                    const endLimit = 9 * 60 + 30;  // 570
+                    
+                    isOn = (currentTimeInMinutes >= startLimit && currentTimeInMinutes < endLimit);
+                } else {
+                    // Giữ nguyên logic của Máy bơm 2 [cite: 300, 301]
+                    const currentTimeInMinutes = currentHour * 60 + currentMinute;
+                    isOn = (currentTimeInMinutes >= 420 && currentTimeInMinutes < 660) || 
+                        (currentTimeInMinutes >= 840 && currentTimeInMinutes < 1080);
                 }
 
-                // Cập nhật lưu lượng: Nếu On thì dao động quanh 1300, nếu Off thì về 0
+                // Cập nhật lưu lượng: Nếu On thì dao động quanh 1300, nếu Off thì về 0 [cite: 302]
                 var flowRate = isOn ? (Math.random() * 5 + 1298).toFixed(0) : "0";
 
-                // Chỉ truyền history nếu bạn muốn hiển thị lại toàn bộ biểu đồ cũ, 
-                // nếu không để updateDeviceFromFirebase tự thêm điểm mới vào mảng data của device.
                 updateDeviceFromFirebase(id, isOn, flowRate, null, null, mode, alarmStatus);
                 
-            }, 1000); // Cập nhật mỗi 1 giây để đảm bảo độ chính xác cho máy bơm 1
+            }, 1000); 
         }
 
         function updateDeviceFromFirebase(id, isOn, flowRate, history, data, mode, alarmStatus) {
